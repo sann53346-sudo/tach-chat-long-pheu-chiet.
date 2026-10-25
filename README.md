@@ -1,6 +1,6 @@
 # Tách tinh dầu bằng phễu chiết — mô phỏng giáo dục
 
-Ứng dụng HTML/CSS/JavaScript thuần, không cần backend hoặc bước build. Thiết kế SVG tương tác, các trạng thái thao tác, cấu hình dung môi lưu bằng `localStorage`, bảng lịch sử và biểu đồ hiệu suất.
+Ứng dụng HTML/CSS/JavaScript thuần, không cần backend hoặc bước build. Các tệp `index.html`, `styles.css`, `main.js`, `chemistry.js`, `separator.js`, `solvents.js`, `storage.js` và `tests.js` nằm trực tiếp ở thư mục gốc.
 
 ## Lưu ý về mô hình
 
@@ -26,7 +26,7 @@ Cài tiện ích Live Server, nhấn chuột phải `index.html` → **Open with
 ## Triển khai GitHub Pages
 
 1. Tạo repository mới trên GitHub.
-2. Đưa `index.html`, `styles.css`, `src/` và `README.md` lên thư mục gốc của repository.
+2. Đưa toàn bộ các tệp HTML/CSS/JavaScript và `README.md` lên thư mục gốc của repository. Không tạo thư mục `src/` trừ khi cập nhật lại các đường dẫn import tương ứng.
 3. Vào **Settings → Pages**.
 4. Trong **Build and deployment**, chọn **Deploy from a branch**, nhánh `main`, thư mục `/(root)`, rồi Save.
 5. Đợi workflow Pages hoàn tất và mở URL được GitHub cung cấp.
@@ -41,7 +41,7 @@ localStorage.removeItem("oilSepSolvents");
 location.reload();
 ```
 
-Để thêm dung môi mặc định cho mọi người dùng, chỉnh `DEFAULT_SOLVENTS` trong `src/solvents.js`. Các trường:
+Để thêm dung môi mặc định cho mọi người dùng, chỉnh `DEFAULT_SOLVENTS` trong `solvents.js`. Các trường:
 - `density`: khối lượng riêng g/mL
 - `k`: hệ số phân bố mô phỏng
 - `miscibility`: `immiscible`, `partial`, hoặc `miscible`
@@ -51,18 +51,19 @@ location.reload();
 
 ## Thay đổi mô hình phân bố
 
-Công thức trong `src/chemistry.js`:
+Công thức trong `chemistry.js`:
 `m_remaining = m_before * V_water / (V_water + K * V_organic)`
 
 Đây là mô hình cân bằng phân bố lý tưởng. Nếu mỗi lần chiết dùng thể tích hoặc K khác nhau, hàm được gọi riêng với thông số của lần đó. Không dùng K giả định như dữ liệu thực nghiệm. Để mô phỏng hỗn hợp cụ thể, hãy xác định K từ nguồn thực nghiệm phù hợp với loại tinh dầu, dung môi và nhiệt độ.
 
 ## Kiểm thử
 
-Các bài kiểm thử đơn vị nằm trong `src/tests.js`. Vì project dùng ES modules, có thể chạy bằng Node.js:
+Các bài kiểm thử đơn vị nằm trong `tests.js`. Vì project dùng ES modules, chạy tại thư mục gốc bằng Node.js:
 ```bash
-node --experimental-default-type=module src/tests.js
+node --experimental-default-type=module tests.js
+node --check main.js
 ```
-Kết quả mong đợi: `5/5 tests passed`. Đây là bài kiểm thử công thức và thứ tự pha, không thay thế kiểm thử toàn bộ giao diện trên các trình duyệt.
+Bộ kiểm thử bao gồm công thức phân bố, thứ tự pha, chuyển thể tích theo thời gian và cân bằng thể tích. Các kiểm thử đơn vị không thay thế kiểm thử tương tác trên trình duyệt.
 
 ## Hạn chế đã biết
 
