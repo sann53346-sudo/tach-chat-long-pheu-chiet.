@@ -31,7 +31,7 @@ Cài tiện ích Live Server, nhấn chuột phải `index.html` → **Open with
 4. Trong **Build and deployment**, chọn **Deploy from a branch**, nhánh `main`, thư mục `/(root)`, rồi Save.
 5. Đợi workflow Pages hoàn tất và mở URL được GitHub cung cấp.
 6. Khi cập nhật, commit/push thay đổi lên `main`; GitHub Pages tự triển khai lại.
-7. Các đường dẫn dùng `./styles.css` và `./src/main.js`, phù hợp khi ứng dụng nằm ở root của project Pages. Nếu đổi sang thư mục con, giữ đường dẫn tương đối đúng với vị trí file.
+7. Các đường dẫn dùng `./styles.css` và `./main.js`; các module JavaScript khác được import tương đối từ thư mục gốc. Nếu đổi sang thư mục con, giữ đường dẫn tương đối đúng với vị trí file.
 
 ## Thêm dung môi
 
