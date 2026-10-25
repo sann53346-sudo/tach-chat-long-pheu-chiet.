@@ -49,18 +49,19 @@
               <path d="M342 321 H378 V335 H342 Z" fill="#a9c5d8" stroke="#d9f1ff" stroke-width="2"/>
               <g id="stopcock" class="stopcock" role="button" tabindex="0" aria-label="Mở hoặc đóng khóa phễu"><path d="M330 328 H390" stroke="#e9f5fc" stroke-width="8" stroke-linecap="round"/><circle cx="360" cy="328" r="12" fill="#dcecf5" stroke="#718ba2" stroke-width="3"/><path id="stopcockHandle" d="M360 316 V340" stroke="#35516b" stroke-width="5" stroke-linecap="round"/></g>
               <path d="M351 335 V354 H369 V335" fill="url(#glass)" stroke="#c7e6f6" stroke-width="3"/>
-              <path id="stream" d="M360 354 V414" stroke="#42b9e9" stroke-width="7" stroke-linecap="round" opacity="0"/>
+              <path id="stream" d="M360 354 V402" stroke="#42b9e9" stroke-width="7" stroke-linecap="round" opacity="0"/>
             </g>
+            <path id="topStream" d="M302 108 C280 180 320 260 360 389" fill="none" stroke="#42b9e9" stroke-width="7" stroke-linecap="round" opacity="0"/>
             <g id="beakerWater">
               <path d="M200 385 L200 450 Q200 461 212 461 H275 Q287 461 287 450 L287 385" fill="url(#glass)" stroke="#b9d7e8" stroke-width="3"/>
               <path id="waterCollected" d="M204 430 H283 V450 Q283 457 274 457 H213 Q204 457 204 450 Z" fill="#239dd4" opacity=".8"/>
-              <text x="243" y="483" text-anchor="middle" fill="#d5e5f3" font-size="14">Bình thu A</text>
+              <text id="waterCupLabel" x="243" y="483" text-anchor="middle" fill="#d5e5f3" font-size="13">Cốc pha nước</text>
               <text id="waterVolSvg" x="243" y="502" text-anchor="middle" fill="#8ecdf0" font-size="13">0 mL</text>
             </g>
             <g id="beakerOrganic">
               <path d="M430 385 L430 450 Q430 461 442 461 H505 Q517 461 517 450 L517 385" fill="url(#glass)" stroke="#b9d7e8" stroke-width="3"/>
               <path id="organicCollected" d="M434 430 H513 V450 Q513 457 504 457 H443 Q434 457 434 450 Z" fill="#e9a43d" opacity=".8"/>
-              <text x="473" y="483" text-anchor="middle" fill="#d5e5f3" font-size="14">Bình thu B</text>
+              <text id="organicCupLabel" x="473" y="483" text-anchor="middle" fill="#d5e5f3" font-size="13">Cốc pha hữu cơ</text>
               <text id="organicVolSvg" x="473" y="502" text-anchor="middle" fill="#f4c779" font-size="13">0 mL</text>
             </g>
             <text x="360" y="58" text-anchor="middle" fill="#e7f3fc" font-size="16" font-weight="600">PHỄU CHIẾT</text>
@@ -79,8 +80,8 @@
           <button id="closeBtn" class="btn">Đóng khóa</button>
         </div>
         <div class="control-row secondary">
-          <button id="nextPhaseBtn" class="btn">Thu pha tiếp theo</button>
-          <button id="nextExtractionBtn" class="btn">Chiết lần tiếp theo</button>
+          <button id="nextPhaseBtn" class="btn">Thu pha trên qua miệng phễu</button>
+          <button id="nextExtractionBtn" class="btn">Chuẩn bị chiết lần tiếp theo</button>
           <button id="resultBtn" class="btn">Xem kết quả</button>
           <button id="resetBtn" class="btn subtle">Đặt lại</button>
         </div>
@@ -101,7 +102,7 @@
             <label>Hệ số phân bố K<input id="partitionK" type="number" min="0.01" max="1000" step="0.1" value="8"></label>
           </div>
           <div class="metrics">
-            <div><span>Thể tích nước</span><strong id="waterMetric">95 mL</strong></div>
+            <div><span>Nước còn trong phễu</span><strong id="waterMetric">—</strong></div>
             <div><span>Tinh dầu ban đầu</span><strong id="oilMetric">5.00 mL</strong></div>
             <div><span>Khối lượng riêng nước</span><strong>1,00 g/mL</strong></div>
             <div><span>Khối lượng riêng dung môi</span><strong id="densityMetric">0,66 g/mL</strong></div>
