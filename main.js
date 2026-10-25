@@ -1,17 +1,18 @@
 import { DEFAULT_SOLVENTS, loadSolvents, saveSolvents } from "./solvents.js";
 import { WATER_DENSITY, validatePositive, phaseOrder, extractionStep, percent, clamp } from "./chemistry.js";
-import { initialState } from "./separator.js";
+import { initialState, transferAmount, volumeBalance, STREAM_TRANSIT_SECONDS, FLOW_RATE_ML_PER_SECOND } from "./separator.js";
 
 const $ = id => document.getElementById(id);
 const els = {
   status:$("status"),message:$("message"),mode:$("mode"),oilType:$("oilType"),mixVol:$("mixVol"),oilPct:$("oilPct"),solventSelect:$("solventSelect"),solventVol:$("solventVol"),partitionK:$("partitionK"),
-  upperLiquid:$("upperLiquid"),lowerLiquid:$("lowerLiquid"),interface:$("interface"),upperLabel:$("upperLabel"),lowerLabel:$("lowerLabel"),waterVolSvg:$("waterVolSvg"),organicVolSvg:$("organicVolSvg"),waterCollected:$("waterCollected"),organicCollected:$("organicCollected"),stream:$("stream"),funnelGroup:$("funnelGroup"),stopcockHandle:$("stopcockHandle"),droplets:$("droplets"),shakeBadge:$("shakeBadge"),
+  upperLiquid:$("upperLiquid"),lowerLiquid:$("lowerLiquid"),interface:$("interface"),upperLabel:$("upperLabel"),lowerLabel:$("lowerLabel"),waterVolSvg:$("waterVolSvg"),organicVolSvg:$("organicVolSvg"),waterCollected:$("waterCollected"),organicCollected:$("organicCollected"),stream:$("stream"),topStream:$("topStream"),funnelGroup:$("funnelGroup"),clamp:$("clamp"),stopcockHandle:$("stopcockHandle"),droplets:$("droplets"),shakeBadge:$("shakeBadge"),beakerWater:$("beakerWater"),beakerOrganic:$("beakerOrganic"),waterCupLabel:$("waterCupLabel"),organicCupLabel:$("organicCupLabel"),
   waterMetric:$("waterMetric"),oilMetric:$("oilMetric"),densityMetric:$("densityMetric"),topPhaseName:$("topPhaseName"),bottomPhaseName:$("bottomPhaseName"),topPhaseDetail:$("topPhaseDetail"),bottomPhaseDetail:$("bottomPhaseDetail"),densityExplanation:$("densityExplanation"),steps:$("steps"),
   results:$("results"),yieldResult:$("yieldResult"),extractedResult:$("extractedResult"),remainingResult:$("remainingResult"),countResult:$("countResult"),historyBody:$("historyBody"),yieldChart:$("yieldChart")
 };
-let solvents=loadSolvents(), state=null, settings=null, settleTimer=null, shakeTimer=null, streamTimer=null;
+let solvents=loadSolvents(), state=null, settings=null, shakeTimer=null, animationFrameId=null, previousFrameTime=null;
 const fmt=(n,d=2)=>Number(n).toLocaleString("vi-VN",{minimumFractionDigits:d,maximumFractionDigits:d});
 function chosenSolvent(){return solvents.find(s=>s.id===els.solventSelect.value)||solvents[0];}
+function currentSolvent(){return state&&state.stage!=="complete"?(solvents.find(s=>s.id===state.currentSolvent)||chosenSolvent()):chosenSolvent();}
 function setMessage(text,type=""){els.message.textContent=text;els.message.className="message"+(type?" "+type:"");}
 function setStatus(text,active=false){els.status.textContent=text;els.status.className="status"+(active?" active":"");}
 function readSettings(){
@@ -48,46 +49,91 @@ function updatePhaseInfo(){
 }
 function updateMetrics(){
   if(!state)return;
-  els.waterMetric.textContent=`${fmt(state.waterVolume,1)} mL`;
-  els.oilMetric.textContent=`${fmt(state.oilInitial,2)} mL`;
+  els.waterMetric.textContent=fmt(state.waterVolume,1)+" mL";
+  els.oilMetric.textContent=fmt(state.oilInitial,2)+" mL";
+}
+function phaseOrderForState(){return phaseOrder(WATER_DENSITY,currentSolvent().density);}
+function phaseVolume(phase){return phase==="water"?state.waterVolume:state.organicPhaseVolume;}
+function setPhaseVolume(phase,value){if(phase==="water")state.waterVolume=Math.max(0,value);else state.organicPhaseVolume=Math.max(0,value);}
+function addToStream(phase,amount){if(phase==="water")state.waterInStream+=amount;else state.organicInStream+=amount;}
+function removeFromStream(phase,amount){if(phase==="water")state.waterInStream=Math.max(0,state.waterInStream-amount);else state.organicInStream=Math.max(0,state.organicInStream-amount);}
+function addCollected(phase,amount){if(phase==="water")state.waterCollected+=amount;else state.organicCollected+=amount;}
+function collectedVolume(phase){return phase==="water"?state.waterCollected:state.organicCollected;}
+function parcelExistsFor(phase){return state.parcels.some(p=>p.phase===phase);}
+function assertVolumeBalance(){
+  if(!state)return;
+  state.waterBalanceError=volumeBalance({remaining:state.waterVolume,collected:state.waterCollected,inStream:state.waterInStream,added:state.waterAddedVolume});
+  state.organicBalanceError=volumeBalance({remaining:state.organicPhaseVolume,collected:state.organicCollected,inStream:state.organicInStream,added:state.organicAddedVolume});
+  if(Math.abs(state.waterBalanceError)>1e-5||Math.abs(state.organicBalanceError)>1e-5)console.error("Volume balance drift",state.waterBalanceError,state.organicBalanceError);
+}
+function cupHeight(volume,totalAdded){return clamp((volume/Math.max(100,totalAdded*1.1))*62,0,62);}
+function cupFillPath(left,right,height){
+  if(height<=0.001)return "M"+left+" 457";
+  const y=457-height;
+  return "M"+(left+4)+" "+y+" H"+(right-4)+" V450 Q"+(right-4)+" 457 "+(right-13)+" 457 H"+(left+13)+" Q"+(left+4)+" 457 "+(left+4)+" 450 Z";
+}
+function renderReceivers(){
+  const active=state&&state.stage!=="complete"&&state.selectedPhase?state.selectedPhase:null;
+  if(active==="water"){
+    els.beakerWater.setAttribute("transform","translate(117 0)");
+    els.beakerOrganic.setAttribute("transform","translate(80 0)");
+  }else if(active==="organic"){
+    els.beakerOrganic.setAttribute("transform","translate(-113 0)");
+    els.beakerWater.setAttribute("transform","translate(-88 0)");
+  }else{
+    els.beakerWater.removeAttribute("transform");
+    els.beakerOrganic.removeAttribute("transform");
+  }
+  const solvent=currentSolvent();
+  els.waterCupLabel.textContent="Cốc pha nước";
+  els.organicCupLabel.textContent="Cốc pha hữu cơ"+(solvent?" · "+solvent.name:"");
 }
 function renderFunnel(){
-  const s=chosenSolvent();if(!s)return;
-  const order=phaseOrder(WATER_DENSITY,s.density);
-  const oilColor=s.color||"#e7ad45";
-  const organicY=order.top==="organic"?92:190;
-  const waterY=order.top==="water"?92:190;
-  els.upperLiquid.setAttribute("y",organicY);els.lowerLiquid.setAttribute("y",waterY);
-  els.upperLiquid.setAttribute("fill",order.top==="organic"?oilColor:"#279fd6");
-  els.lowerLiquid.setAttribute("fill",order.bottom==="organic"?oilColor:"#279fd6");
-  els.interface.setAttribute("d",`M270 ${190} H450`);
-  els.upperLabel.setAttribute("y",order.top==="organic"?133:133);
-  els.lowerLabel.setAttribute("y",225);
-  els.upperLabel.textContent=order.top==="organic"?"Pha hữu cơ": "Pha nước";
-  els.lowerLabel.textContent=order.bottom==="organic"?"Pha hữu cơ":"Pha nước";
-  els.upperLabel.setAttribute("fill",order.top==="organic"?"#573b12":"#073b58");
-  els.lowerLabel.setAttribute("fill",order.bottom==="organic"?"#573b12":"#073b58");
-  if(state){
-    const total=Math.max(1,state.waterVolume+state.oilRemaining+(state.organicPhaseVolume||0));
-    const topHeight=clamp(200*(order.top==="organic"?(state.organicPhaseVolume||settings.solventVol):state.waterVolume)/total,28,110);
-    // Graphic remains schematic; adjust the visible interface with phase volumes.
-    const y=clamp(92+topHeight,125,218);
-    els.interface.setAttribute("d",`M276 ${y} H444`);
-    els.upperLiquid.setAttribute("height",y-90);els.lowerLiquid.setAttribute("y",y);els.lowerLiquid.setAttribute("height",290-y);
-  }
-  els.waterVolSvg.textContent=`${fmt(state?.waterCollected||0,1)} mL`;
-  els.organicVolSvg.textContent=`${fmt(state?.organicCollected||0,1)} mL`;
-  const hW=clamp((state?.waterCollected||0)/Math.max(1,settings?.mixVol||100)*28,0,28);
-  const hO=clamp((state?.organicCollected||0)/Math.max(1,settings?.mixVol||100)*28,0,28);
-  els.waterCollected.setAttribute("d",`M204 ${457-hW} H283 V450 Q283 457 274 457 H213 Q204 457 204 450 Z`);
-  els.organicCollected.setAttribute("d",`M434 ${457-hO} H513 V450 Q513 457 504 457 H443 Q434 457 434 450 Z`);
+  const solvent=currentSolvent();if(!solvent)return;
+  const order=phaseOrder(WATER_DENSITY,solvent.density);
+  const topVolume=order.top==="water"?(state?.waterVolume||0):(state?.organicPhaseVolume||0);
+  const bottomVolume=order.bottom==="water"?(state?.waterVolume||0):(state?.organicPhaseVolume||0);
+  const cycleTotal=Math.max(1e-6,state?.cycleInitialTotal||1);
+  const scale=216/cycleTotal;
+  const topHeight=clamp(topVolume*scale,0,216);
+  const bottomHeight=clamp(bottomVolume*scale,0,216);
+  const surfaceY=306-topHeight-bottomHeight;
+  const interfaceY=surfaceY+topHeight;
+  const topOrganic=order.top==="organic",bottomOrganic=order.bottom==="organic";
+  const organicColor=solvent.color||"#e7ad45";
+  els.upperLiquid.setAttribute("y",surfaceY);els.upperLiquid.setAttribute("height",topHeight);
+  els.upperLiquid.setAttribute("fill",topOrganic?organicColor:"url(#waterGrad)");
+  els.upperLiquid.setAttribute("opacity",topVolume>1e-6?"1":"0");
+  els.lowerLiquid.setAttribute("y",interfaceY);els.lowerLiquid.setAttribute("height",bottomHeight);
+  els.lowerLiquid.setAttribute("fill",bottomOrganic?organicColor:"url(#waterGrad)");
+  els.lowerLiquid.setAttribute("opacity",bottomVolume>1e-6?"1":"0");
+  els.interface.setAttribute("d","M276 "+interfaceY+" H444");
+  els.interface.setAttribute("opacity",topVolume>1e-6&&bottomVolume>1e-6?"1":"0");
+  els.upperLabel.textContent=topOrganic?"Pha hữu cơ":"Pha nước";
+  els.lowerLabel.textContent=bottomOrganic?"Pha hữu cơ":"Pha nước";
+  els.upperLabel.setAttribute("y",surfaceY+Math.max(14,topHeight/2));
+  els.lowerLabel.setAttribute("y",interfaceY+Math.max(14,bottomHeight/2));
+  els.upperLabel.setAttribute("fill",topOrganic?"#573b12":"#073b58");
+  els.lowerLabel.setAttribute("fill",bottomOrganic?"#573b12":"#073b58");
+  els.upperLabel.setAttribute("opacity",topHeight>24?"1":"0");
+  els.lowerLabel.setAttribute("opacity",bottomHeight>24?"1":"0");
+  const hWater=cupHeight(state?.waterCollected||0,state?.waterAddedVolume||100);
+  const hOrganic=cupHeight(state?.organicCollected||0,state?.organicAddedVolume||100);
+  els.waterCollected.setAttribute("d",cupFillPath(204,283,hWater));
+  els.organicCollected.setAttribute("d",cupFillPath(434,513,hOrganic));
+  els.waterVolSvg.textContent=fmt(state?.waterCollected||0,1)+" mL";
+  els.organicVolSvg.textContent=fmt(state?.organicCollected||0,1)+" mL";
+  renderReceivers();
 }
+
 function renderSteps(){
-  const steps=[["Chuẩn bị hỗn hợp và chọn dung môi.",["idle"]],["Lắc phễu để tăng tiếp xúc giữa các pha.",["ready","shaken"]],["Để yên cho hai pha phân lớp.",["settled"]],["Mở khóa, thu pha dưới rồi đóng khóa đúng lúc.",["draining","separated"]],["Phân tích hiệu suất và so sánh các lần chiết.",["complete"]]];
+  const labels=["Chuẩn bị hỗn hợp và chọn dung môi.","Lắc phễu để tăng tiếp xúc giữa các pha.","Để yên cho hai pha phân lớp.","Mở khóa, thu hết pha dưới.","Nghiêng phễu và rót pha trên qua miệng."];
   els.steps.innerHTML="";
-  let activeIndex=state?.stage==="idle"?0:state?.stage==="ready"?1:state?.stage==="shaken"?2:state?.stage==="settled"?3:state?.stage==="draining"?3:state?.stage==="separated"?4:4;
-  steps.forEach((x,i)=>{const li=document.createElement("li");li.textContent=x[0];if(i<activeIndex)li.className="done";else if(i===activeIndex)li.className="active";els.steps.append(li);});
+  const stage=state?.stage||"idle";
+  const active=stage==="idle"?0:["ready","shaking"].includes(stage)?1:stage==="shaken"?2:["settled","lower-partial","lower-pending"].includes(stage)?3:["lower-collected","collecting-upper","upper-pending"].includes(stage)?4:5;
+  labels.forEach((label,i)=>{const li=document.createElement("li");li.textContent=label;if(i<active)li.className="done";else if(i===active)li.className="active";els.steps.append(li);});
 }
+
 function renderResults(){
   const extracted=Math.max(0,state.oilInitial-state.oilRemaining);
   els.yieldResult.textContent=`${fmt(percent(extracted,state.oilInitial),1)}%`;
@@ -99,100 +145,189 @@ function renderResults(){
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function updateButtons(){
   const stage=state?.stage;
-  $("shakeBtn").disabled=!["ready","shaken"].includes(stage);
-  $("settleBtn").disabled=!["shaken","ready"].includes(stage);
-  $("openBtn").disabled=!["settled","draining"].includes(stage)||state.valveOpen;
+  $("startBtn").disabled=!!state;
+  $("shakeBtn").disabled=stage!=="ready";
+  $("settleBtn").disabled=stage!=="shaken";
+  $("openBtn").disabled=!["settled","lower-partial"].includes(stage)||!!state?.valveOpen;
   $("closeBtn").disabled=!state?.valveOpen;
-  $("nextPhaseBtn").disabled=!["separated","settled"].includes(stage);
-  $("nextExtractionBtn").disabled=!["separated","complete"].includes(stage)||state.oilRemaining<0.005;
+  $("nextPhaseBtn").disabled=stage!=="lower-collected";
+  $("nextExtractionBtn").disabled=stage!=="complete"||(state?.oilRemaining??0)<0.005;
 }
-function sync(){updateMetrics();renderFunnel();renderSteps();updateButtons();}
+function sync(){updateMetrics();renderFunnel();renderSteps();updateButtons();assertVolumeBalance();}
+
 function startExperiment(){
+  if(state){setMessage("Hãy nhấn “Đặt lại” trước khi bắt đầu một thí nghiệm mới.","error");return;}
   try{
-    settings=readSettings();const s=chosenSolvent();
-    if(s.miscibility==="miscible"){setMessage("Dung môi này được khai báo trộn lẫn hoàn toàn với nước. Mô hình không thể coi đây là phép chiết lỏng–lỏng hai pha; hãy chọn dung môi khác hoặc đổi dữ liệu cấu hình.","error");return;}
-    state=initialState(settings);state.stage="ready";state.currentSolvent=s.id;state.organicPhaseVolume=settings.solventVol;
-    setStatus("Sẵn sàng",true);setMessage(`Đã chuẩn bị ${fmt(state.waterVolume,1)} mL pha nước và ${fmt(state.oilInitial,2)} mL tinh dầu mô phỏng. Chọn “Lắc phễu” để tiếp tục.`,"success");
-    els.results.classList.add("hidden");sync();
-  }catch(e){setMessage(e.message,"error");}
+    settings=readSettings();
+    const solvent=chosenSolvent();
+    if(solvent.miscibility==="miscible")throw new Error("Dung môi trộn lẫn hoàn toàn với nước không phù hợp với mô hình chiết hai pha.");
+    state=initialState(settings);state.stage="ready";state.currentSolvent=solvent.id;
+    state.organicPhaseVolume=settings.solventVol;state.organicAddedVolume=settings.solventVol;
+    state.cycleInitialTotal=state.waterVolume+state.organicPhaseVolume;
+    state.selectedPhase=null;els.results.classList.add("hidden");
+    setStatus("Sẵn sàng",true);
+    setMessage("Đã nạp "+fmt(state.waterVolume,1)+" mL pha nước và "+fmt(state.organicPhaseVolume,1)+" mL dung môi. Nhấn “Lắc phễu”, sau đó để yên cho phân lớp.","success");
+    sync();
+  }catch(e){state=null;setMessage(e.message,"error");updateButtons();}
 }
 function shake(){
-  if(!state||!["ready","shaken"].includes(state.stage))return;
-  clearTimeout(shakeTimer);state.stage="shaken";state.droplets=true;els.droplets.innerHTML="";
-  for(let i=0;i<18;i++){const c=document.createElementNS("http://www.w3.org/2000/svg","circle");c.setAttribute("cx",290+Math.random()*140);c.setAttribute("cy",115+Math.random()*115);c.setAttribute("r",2+Math.random()*3);c.setAttribute("fill",i%2?"#b9efff":"#ffd68b");c.setAttribute("opacity",".9");els.droplets.append(c);}
+  if(!state||state.stage!=="ready")return;
+  clearTimeout(shakeTimer);state.stage="shaking";state.droplets=true;els.droplets.innerHTML="";
+  for(let i=0;i<18;i++){
+    const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    c.setAttribute("cx",290+Math.random()*140);c.setAttribute("cy",115+Math.random()*115);c.setAttribute("r",2+Math.random()*3);
+    c.setAttribute("fill",i%2?"#b9efff":"#ffd68b");c.setAttribute("opacity",".9");els.droplets.append(c);
+  }
   els.shakeBadge.setAttribute("opacity","1");els.funnelGroup.style.transformOrigin="360px 200px";els.funnelGroup.style.animation="shake .45s ease-in-out 4";
-  setStatus("Đang lắc",true);setMessage("Các giọt pha phân tán, tăng diện tích tiếp xúc. Trong thí nghiệm thật, phải xả áp theo quy trình an toàn và không lắc dung môi dễ bay hơi tùy tiện.");
-  shakeTimer=setTimeout(()=>{els.funnelGroup.style.animation="";els.shakeBadge.setAttribute("opacity","0");state.droplets=false;state.stage="shaken";setStatus("Đã lắc · chờ phân lớp",true);setMessage("Đã kết thúc mô phỏng thao tác lắc. Nhấn “Để yên & phân lớp” để quan sát hai pha tách ra.");updateButtons();},1900);
-  updateButtons();
+  setStatus("Đang lắc",true);
+  setMessage("Các giọt pha đang phân tán. Đây là mô phỏng thao tác lắc; thí nghiệm thật phải tuân thủ quy trình an toàn dung môi.");
+  sync();
+  shakeTimer=setTimeout(()=>{
+    if(!state||state.stage!=="shaking")return;
+    els.funnelGroup.style.animation="";els.shakeBadge.setAttribute("opacity","0");state.droplets=false;state.stage="shaken";
+    setStatus("Đã lắc · chờ phân lớp",true);setMessage("Nhấn “Để yên & phân lớp” để quan sát hai lớp ổn định.");updateButtons();renderSteps();
+  },1900);
 }
 function settle(){
-  if(!state||!["shaken","ready"].includes(state.stage))return;
-  state.stage="settled";state.droplets=false;els.droplets.innerHTML="";setStatus("Đã phân lớp",true);
-  const s=chosenSolvent();const order=phaseOrder(WATER_DENSITY,s.density);
-  setMessage(order.explanation+(order.close?" Hai pha gần khối lượng riêng nên hãy quan sát mặt phân cách cẩn thận.":"")+" Có thể mở khóa để bắt đầu thu pha nằm dưới.");
+  if(!state||state.stage!=="shaken")return;
+  const order=phaseOrderForState();state.stage="settled";state.droplets=false;els.droplets.innerHTML="";
+  state.selectedPhase=order.bottom;
+  state.pendingExtraction=extractionStep(state.oilRemaining,Math.max(1e-6,state.waterVolume),Math.max(1e-6,state.organicPhaseVolume),settings.K);
+  setStatus("Đã phân lớp",true);
+  setMessage(order.explanation+" Cốc pha dưới đã được đặt thẳng dưới miệng khóa. Mở khóa để xả pha dưới; có thể đóng khóa giữa chừng và tiếp tục sau.");
   sync();
 }
+function setLowerOutletVisible(visible){
+  els.stream.setAttribute("opacity",visible?".95":"0");
+  els.stopcockHandle.setAttribute("d",visible?"M348 328 H372":"M360 316 V340");
+  els.stream.style.stroke=state?.selectedPhase==="organic"?(currentSolvent().color||"#e7ad45"):"#42b9e9";
+}
 function openValve(){
-  if(!state||!["settled","draining"].includes(state.stage)||state.valveOpen)return;
-  state.valveOpen=true;state.stage="draining";els.stopcockHandle.setAttribute("d","M348 328 H372");els.stream.setAttribute("opacity",".9");setStatus("Đang xả",true);
-  const order=phaseOrder(WATER_DENSITY,chosenSolvent().density);
-  state.selectedPhase=order.bottom;
-  const isWater=order.bottom==="water";
-  setMessage(`Đang thu ${isWater?"pha nước":"pha hữu cơ"} (lớp dưới). Đóng khóa trước khi mặt phân cách đi qua để tránh lẫn pha.`);
-  clearInterval(streamTimer);
-  streamTimer=setInterval(()=>{
-    if(!state?.valveOpen){clearInterval(streamTimer);return;}
-    const delta=Math.min(1.2,isWater?state.waterVolume:state.organicPhaseVolume||0);
-    if(delta<=0){closeValve();setMessage("Pha dưới đã được thu hết. Đóng khóa và chọn “Thu pha tiếp theo” nếu muốn thu lớp còn lại.");return;}
-    if(isWater){state.waterVolume=Math.max(0,state.waterVolume-delta);state.waterCollected+=delta;}
-    else{state.organicPhaseVolume=Math.max(0,state.organicPhaseVolume-delta);state.organicCollected+=delta;}
-    renderFunnel();updateMetrics();
-    if((isWater?state.waterVolume:state.organicPhaseVolume)<=0.05){closeValve();setMessage("Đã gần thu hết pha dưới. Khóa đã đóng để hạn chế pha kế tiếp đi qua.");}
-  },90);
-  updateButtons();
+  if(!state||!["settled","lower-partial"].includes(state.stage)){
+    setMessage("Chỉ mở khóa sau khi hai pha đã phân lớp và trước khi rót pha trên.","error");return;
+  }
+  if(state.valveOpen)return;
+  const lower=phaseOrderForState().bottom;
+  if(phaseVolume(lower)<=1e-6){setMessage("Pha dưới đã thu hết. Hãy rót pha trên qua miệng phễu.");return;}
+  state.selectedPhase=lower;state.activeFlowPhase=lower;state.valveOpen=true;state.stage="lower-partial";
+  setLowerOutletVisible(true);setStatus("Đang xả pha dưới",true);
+  setMessage("Đang thu "+(lower==="water"?"pha nước":"pha hữu cơ")+" qua khóa dưới. Nhấn “Đóng khóa” để tạm dừng; thể tích còn lại sẽ được giữ nguyên.");
+  updateButtons();renderReceivers();ensureFlowLoop();
 }
 function closeValve(){
-  if(!state)return;state.valveOpen=false;clearInterval(streamTimer);els.stopcockHandle.setAttribute("d","M360 316 V340");els.stream.setAttribute("opacity","0");
-  if(state.stage==="draining")state.stage="separated";setStatus(state.stage==="separated"?"Đã thu pha dưới":"Đã đóng khóa",true);sync();
+  if(!state||!state.valveOpen)return;
+  state.valveOpen=false;setLowerOutletVisible(false);
+  if(phaseVolume(state.activeFlowPhase)<=1e-6)state.stage="lower-pending";else state.stage="lower-partial";
+  setStatus("Đã đóng khóa",true);
+  setMessage(phaseVolume(state.activeFlowPhase)<=1e-6?"Pha dưới đã rời phễu; những giọt cuối đang đi vào cốc.":"Dòng chảy đã dừng. Thể tích còn lại được bảo toàn; mở khóa để tiếp tục.");
+  updateButtons();ensureFlowLoop();sync();
 }
-function collectNext(){
-  if(!state||!["separated","settled"].includes(state.stage))return;
-  if(state.valveOpen){setMessage("Hãy đóng khóa trước khi chuyển thao tác.","error");return;}
-  const order=phaseOrder(WATER_DENSITY,chosenSolvent().density);
-  if(order.bottom==="water"&&state.waterVolume>0.05){
-    setMessage("Pha nước ở dưới chưa được thu hết. Mở khóa, thu pha dưới trước rồi đóng khóa.","error");return;
-  }
-  if(order.bottom==="organic"&&(state.organicPhaseVolume||0)>0.05){
-    setMessage("Pha hữu cơ ở dưới chưa được thu hết. Mở khóa, thu pha dưới trước rồi đóng khóa.","error");return;
-  }
-  // Remaining upper layer is collected into its corresponding receiver.
-  if(state.waterVolume>0){state.waterCollected+=state.waterVolume;state.waterVolume=0;}
-  if((state.organicPhaseVolume||0)>0){state.organicCollected+=state.organicPhaseVolume;state.organicPhaseVolume=0;}
-  state.stage="complete";setStatus("Đã tách xong",true);setMessage("Đã mô phỏng thu hai pha. Xem kết quả để kiểm tra lượng tinh dầu chuyển pha và hiệu suất chiết.","success");sync();renderResults();
+function startUpperPour(){
+  if(!state||state.stage!=="lower-collected")return;
+  const phase=phaseOrderForState().top;
+  if(phaseVolume(phase)<=1e-6){completeUpperCollection();return;}
+  state.stage="collecting-upper";state.selectedPhase=phase;state.activeFlowPhase=phase;state.upperPouring=true;
+  els.funnelGroup.style.transformOrigin="360px 200px";els.funnelGroup.style.animation="";els.funnelGroup.style.transform="rotate(-32deg)";
+  els.clamp.setAttribute("opacity","0");
+  els.topStream.style.stroke=phase==="organic"?(currentSolvent().color||"#e7ad45"):"#42b9e9";els.topStream.setAttribute("opacity",".95");
+  setStatus("Đang rót pha trên",true);
+  setMessage("Đã mô phỏng lấy phễu khỏi kẹp và nghiêng để rót "+(phase==="water"?"pha nước":"pha hữu cơ")+" qua miệng phễu vào cốc riêng. Thể tích giảm dần theo thời gian.");
+  updateButtons();renderReceivers();ensureFlowLoop();
 }
+function transferToStream(dt){
+  const phase=state.activeFlowPhase,remaining=phaseVolume(phase);
+  if(remaining<=1e-6){
+    setPhaseVolume(phase,0);
+    if(state.valveOpen){state.valveOpen=false;state.stage="lower-pending";setLowerOutletVisible(false);setStatus("Đã xả hết pha dưới",true);setMessage("Pha dưới đã hết trong phễu. Đang chờ dòng cuối cùng vào cốc.");updateButtons();}
+    else if(state.upperPouring){state.upperPouring=false;state.stage="upper-pending";els.topStream.setAttribute("opacity","0");}
+    return;
+  }
+  const amount=transferAmount(remaining,FLOW_RATE_ML_PER_SECOND,dt);
+  if(amount<=0)return;
+  setPhaseVolume(phase,remaining-amount<1e-6?0:remaining-amount);addToStream(phase,amount);
+  state.parcels.push({phase,amount,remainingSeconds:STREAM_TRANSIT_SECONDS});
+  if(phaseVolume(phase)<=1e-6){
+    setPhaseVolume(phase,0);
+    if(state.valveOpen){state.valveOpen=false;state.stage="lower-pending";setLowerOutletVisible(false);setStatus("Đã xả hết pha dưới",true);setMessage("Pha dưới đã hết trong phễu. Đang chờ dòng cuối cùng vào cốc.");updateButtons();}
+    if(state.upperPouring){state.upperPouring=false;state.stage="upper-pending";els.topStream.setAttribute("opacity","0");}
+  }
+}
+function deliverParcels(dt){
+  const keep=[];
+  for(const parcel of state.parcels){
+    parcel.remainingSeconds-=dt;
+    if(parcel.remainingSeconds<=0){removeFromStream(parcel.phase,parcel.amount);addCollected(parcel.phase,parcel.amount);}
+    else keep.push(parcel);
+  }
+  state.parcels=keep;
+}
+function finishLowerIfReady(){
+  const lower=phaseOrderForState().bottom;
+  if(state.stage!=="lower-pending"||phaseVolume(lower)>1e-6||parcelExistsFor(lower))return;
+  state.stage="lower-collected";state.selectedPhase=phaseOrderForState().top;state.activeFlowPhase=null;
+  setStatus("Đã thu hết pha dưới",true);
+  setMessage("Đã thu hết pha dưới ("+fmt(collectedVolume(lower),1)+" mL). Cốc này được giữ nguyên. Tiếp theo, nghiêng phễu và rót pha trên qua miệng vào cốc riêng.","success");
+  sync();
+}
+function finishUpperIfReady(){
+  const upper=phaseOrderForState().top;
+  if(state.stage!=="upper-pending"||phaseVolume(upper)>1e-6||parcelExistsFor(upper))return;
+  completeUpperCollection();
+}
+function completeUpperCollection(){
+  if(!state)return;
+  if(state.waterVolume>1e-6||state.organicPhaseVolume>1e-6||state.waterInStream>1e-6||state.organicInStream>1e-6||state.parcels.length){
+    setMessage("Chưa thể hoàn tất: vẫn còn chất lỏng trong phễu hoặc đang chảy vào cốc.","error");return;
+  }
+  state.waterVolume=0;state.organicPhaseVolume=0;state.stage="complete";state.upperPouring=false;state.valveOpen=false;
+  state.selectedPhase=null;state.activeFlowPhase=null;els.topStream.setAttribute("opacity","0");
+  els.funnelGroup.style.transform="";els.clamp.setAttribute("opacity","1");
+  if(state.pendingExtraction)state.oilRemaining=state.pendingExtraction.remaining;
+  state.extractions.push({n:state.extractions.length+1,solvent:currentSolvent().name,volume:settings.solventVol,remaining:state.oilRemaining,yield:percent(state.oilInitial-state.oilRemaining,state.oilInitial)});
+  setStatus("Đã thu cả hai pha",true);
+  setMessage("Đã thu xong hai pha: pha dưới qua khóa, pha trên qua miệng phễu. Phễu không còn chất lỏng; hai cốc giữ riêng thể tích đã thu.","success");
+  els.results.classList.remove("hidden");sync();renderResults();
+}
+function flowFrame(now){
+  animationFrameId=null;if(!state)return;
+  const dt=previousFrameTime==null?0:clamp((now-previousFrameTime)/1000,0,.05);previousFrameTime=now;
+  deliverParcels(dt);
+  if(dt>0&&(state.valveOpen||state.upperPouring))transferToStream(dt);
+  finishLowerIfReady();finishUpperIfReady();assertVolumeBalance();
+  renderFunnel();updateMetrics();renderSteps();updateButtons();
+  if(state&&(state.valveOpen||state.upperPouring||state.parcels.length))animationFrameId=requestAnimationFrame(flowFrame);
+  else previousFrameTime=null;
+}
+function ensureFlowLoop(){if(animationFrameId==null){previousFrameTime=null;animationFrameId=requestAnimationFrame(flowFrame);}}
 function nextExtraction(){
-  if(!state||!["separated","complete"].includes(state.stage)||state.oilRemaining<.005)return;
+  if(!state||state.stage!=="complete"||state.oilRemaining<.005)return;
   try{
-    const s=chosenSolvent(),settingsNow=readSettings();
-    if(s.miscibility==="miscible")throw new Error("Dung môi trộn lẫn hoàn toàn với nước không phù hợp với mô hình chiết hai pha này.");
-    const before=state.oilRemaining;
-    const result=extractionStep(before,Math.max(0.1,state.waterVolume||settings.mixVol*(1-settings.oilPct/100)),settingsNow.solventVol,settingsNow.K);
-    state.oilRemaining=result.remaining;
-    state.organicPhaseVolume=settingsNow.solventVol;
-    state.waterVolume=Math.max(0.1,state.waterVolume||settings.mixVol*(1-settings.oilPct/100));
-    state.stage="ready";state.valveOpen=false;state.currentSolvent=s.id;
-    state.extractions.push({n:state.extractions.length+1,solvent:s.name,volume:settingsNow.solventVol,remaining:state.oilRemaining,yield:percent(state.oilInitial-state.oilRemaining,state.oilInitial)});
-    setStatus(`Lần chiết ${state.extractions.length} · sẵn sàng`,true);
-    setMessage(`Mô hình phân bố dự đoán ${fmt(result.extracted)} mL tinh dầu chuyển sang pha hữu cơ ở lần này; còn ${fmt(state.oilRemaining)} mL trong pha nước. Nhấn “Lắc phễu”, phân lớp rồi thu pha.`);
-    els.results.classList.remove("hidden");sync();renderResults();
+    const solvent=chosenSolvent(),nextSettings=readSettings();
+    if(solvent.miscibility==="miscible")throw new Error("Dung môi trộn lẫn hoàn toàn với nước không phù hợp với mô hình chiết hai pha.");
+    const returnedWater=state.waterCollected;
+    if(returnedWater<=1e-6)throw new Error("Không tìm thấy pha nước đã thu để đưa trở lại phễu cho lần chiết tiếp theo.");
+    state.waterCollected=0;state.waterVolume+=returnedWater;
+    state.organicPhaseVolume=nextSettings.solventVol;state.organicAddedVolume+=nextSettings.solventVol;
+    state.cycleInitialTotal=state.waterVolume+state.organicPhaseVolume;state.currentSolvent=solvent.id;
+    state.stage="ready";state.selectedPhase=null;state.activeFlowPhase=null;state.pendingExtraction=null;state.upperPouring=false;state.valveOpen=false;
+    settings=nextSettings;els.funnelGroup.style.transform="";els.clamp.setAttribute("opacity","1");els.topStream.setAttribute("opacity","0");setLowerOutletVisible(false);
+    setStatus("Lần chiết "+(state.extractions.length+1)+" · sẵn sàng",true);
+    setMessage("Đã chuyển "+fmt(returnedWater,1)+" mL pha nước từ cốc trở lại phễu và thêm "+fmt(nextSettings.solventVol,1)+" mL dung môi mới. Thể tích được bảo toàn và lịch sử vẫn được giữ.");
+    sync();renderResults();
   }catch(e){setMessage(e.message,"error");}
 }
 function reset(){
-  clearTimeout(shakeTimer);clearInterval(streamTimer);if(state?.valveOpen)closeValve();
-  state=null;settings=null;els.results.classList.add("hidden");els.droplets.innerHTML="";els.funnelGroup.style.animation="";els.shakeBadge.setAttribute("opacity","0");setStatus("Chưa bắt đầu");setMessage("Chọn hỗn hợp và nhấn “Bắt đầu thí nghiệm”.");
-  els.waterCollected.setAttribute("d","M204 430 H283 V450 Q283 457 274 457 H213 Q204 457 204 450 Z");els.organicCollected.setAttribute("d","M434 430 H513 V450 Q513 457 504 457 H443 Q434 457 434 450 Z");
-  renderFunnel();renderSteps();updateButtons();els.waterMetric.textContent="—";els.oilMetric.textContent="—";
+  clearTimeout(shakeTimer);if(animationFrameId!=null)cancelAnimationFrame(animationFrameId);
+  animationFrameId=null;previousFrameTime=null;state=null;settings=null;
+  els.results.classList.add("hidden");els.droplets.innerHTML="";els.funnelGroup.style.animation="";els.funnelGroup.style.transform="";
+  els.shakeBadge.setAttribute("opacity","0");els.clamp.setAttribute("opacity","1");els.stream.setAttribute("opacity","0");els.topStream.setAttribute("opacity","0");
+  els.stopcockHandle.setAttribute("d","M360 316 V340");els.beakerWater.removeAttribute("transform");els.beakerOrganic.removeAttribute("transform");
+  els.waterCollected.setAttribute("d",cupFillPath(204,283,0));els.organicCollected.setAttribute("d",cupFillPath(434,513,0));
+  els.waterVolSvg.textContent="0 mL";els.organicVolSvg.textContent="0 mL";
+  setStatus("Chưa bắt đầu");setMessage("Chọn thông số rồi nhấn “Bắt đầu thí nghiệm”.");
+  els.waterMetric.textContent="—";els.oilMetric.textContent="—";renderFunnel();renderSteps();updateButtons();
 }
+
 function addSolvent(){
   const name=$("newName").value.trim(),density=Number($("newDensity").value),miscibility=$("newMiscibility").value,volume=Number($("newVol").value),kRaw=$("newK").value.trim();
   if(!name){setMessage("Hãy nhập tên dung môi.","error");return;}
@@ -203,20 +338,46 @@ function addSolvent(){
   solvents.push(item);saveSolvents(solvents);populateSolvents(item.id);if(k!==null)els.partitionK.value=k;$("addSolventForm").classList.add("hidden");setMessage(`Đã thêm “${name}”. ${k===null?"Chưa có K nên cần nhập hệ số phân bố trước khi tính hiệu suất.":"Thông số K được lưu dưới dạng dữ liệu do người dùng cung cấp."}`,"success");
 }
 function bind(){
-  $("startBtn").addEventListener("click",startExperiment);$("shakeBtn").addEventListener("click",shake);$("settleBtn").addEventListener("click",settle);$("openBtn").addEventListener("click",openValve);$("closeBtn").addEventListener("click",closeValve);$("nextPhaseBtn").addEventListener("click",collectNext);$("nextExtractionBtn").addEventListener("click",nextExtraction);$("resetBtn").addEventListener("click",reset);
-  $("resultBtn").addEventListener("click",()=>{if(!state){setMessage("Hãy bắt đầu thí nghiệm trước.","error");return;}els.results.classList.remove("hidden");renderResults();els.results.scrollIntoView({behavior:"smooth",block:"start"});});
+  $("startBtn").addEventListener("click",startExperiment);
+  $("shakeBtn").addEventListener("click",shake);
+  $("settleBtn").addEventListener("click",settle);
+  $("openBtn").addEventListener("click",openValve);
+  $("closeBtn").addEventListener("click",closeValve);
+  $("nextPhaseBtn").addEventListener("click",startUpperPour);
+  $("nextExtractionBtn").addEventListener("click",nextExtraction);
+  $("resetBtn").addEventListener("click",reset);
+  $("resultBtn").addEventListener("click",()=>{
+    if(!state){setMessage("Hãy bắt đầu thí nghiệm trước.","error");return;}
+    els.results.classList.remove("hidden");renderResults();els.results.scrollIntoView({behavior:"smooth",block:"start"});
+  });
   $("hideResultBtn").addEventListener("click",()=>els.results.classList.add("hidden"));
-  $("addSolventBtn").addEventListener("click",()=>$("addSolventForm").classList.toggle("hidden"));$("cancelSolventBtn").addEventListener("click",()=>$("addSolventForm").classList.add("hidden"));$("saveSolventBtn").addEventListener("click",addSolvent);
-  els.solventSelect.addEventListener("change",()=>{updateSolventFields();if(state&&state.stage!=="idle")setMessage("Đã đổi dung môi. Nếu thí nghiệm đang diễn ra, hãy kiểm tra lại giả định và bắt đầu lần chiết mới để dùng bộ thông số mới.");});
-  [els.mixVol,els.oilPct].forEach(el=>el.addEventListener("change",()=>{if(state){setMessage("Thông số hỗn hợp đã thay đổi. Đặt lại và bắt đầu lại để áp dụng nhất quán.","error");return;}try{const s=readSettings();els.waterMetric.textContent=`${fmt(s.mixVol*(1-s.oilPct/100),1)} mL`;els.oilMetric.textContent=`${fmt(s.mixVol*s.oilPct/100)} mL`;}catch(e){setMessage(e.message,"error");}}));
-  $("partitionK").addEventListener("change",()=>{if(state)setMessage("K đã thay đổi. Giá trị mới sẽ được dùng cho lần chiết tiếp theo.");});
-  $("solventVol").addEventListener("change",()=>{if(state)setMessage("Thể tích dung môi đã thay đổi; giá trị mới áp dụng cho lần chiết tiếp theo.");});
-  $("stopcock").addEventListener("click",()=>state?.valveOpen?closeValve():openValve());
-  $("stopcock").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();state?.valveOpen?closeValve():openValve();}});
-  els.mode.addEventListener("change",()=>{setMessage(els.mode.value==="guided"?"Chế độ có hướng dẫn: thực hiện theo thứ tự chuẩn bị → lắc → phân lớp → thu pha.":"Chế độ tự do: bạn có thể thử đổi thông số và dung môi; các thao tác không hợp lệ vẫn được chặn để giữ trạng thái nhất quán.");});
+  $("addSolventBtn").addEventListener("click",()=>$("addSolventForm").classList.toggle("hidden"));
+  $("cancelSolventBtn").addEventListener("click",()=>$("addSolventForm").classList.add("hidden"));
+  $("saveSolventBtn").addEventListener("click",addSolvent);
+  els.solventSelect.addEventListener("change",()=>{
+    if(state&&state.stage!=="complete"){
+      els.solventSelect.value=state.currentSolvent;
+      setMessage("Không thể đổi dung môi giữa chu trình. Hãy hoàn tất hoặc đặt lại thí nghiệm trước.","error");return;
+    }
+    updateSolventFields();
+  });
+  [els.mixVol,els.oilPct].forEach(el=>el.addEventListener("change",()=>{
+    if(state){setMessage("Thông số hỗn hợp đã thay đổi. Đặt lại trước khi áp dụng vào thí nghiệm hiện tại.","error");return;}
+    try{const v=readSettings();els.waterMetric.textContent=fmt(v.mixVol*(1-v.oilPct/100),1)+" mL";els.oilMetric.textContent=fmt(v.mixVol*v.oilPct/100)+" mL";}
+    catch(e){setMessage(e.message,"error");}
+  }));
+  $("partitionK").addEventListener("change",()=>{if(state&&state.stage!=="complete")setMessage("K không thể đổi giữa chu trình; giá trị mới dùng cho lần chiết kế tiếp.");});
+  $("solventVol").addEventListener("change",()=>{if(state&&state.stage!=="complete")setMessage("Thể tích dung môi không thể đổi giữa chu trình; giá trị mới dùng cho lần chiết kế tiếp.");});
+  $("stopcock").addEventListener("click",()=>{if(state?.valveOpen)closeValve();else openValve();});
+  $("stopcock").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();if(state?.valveOpen)closeValve();else openValve();}});
+  els.mode.addEventListener("change",()=>setMessage(els.mode.value==="guided"?"Thực hiện theo thứ tự: chuẩn bị → lắc → phân lớp → thu pha dưới qua khóa → rót pha trên qua miệng.":"Chế độ tự do cho phép thay đổi thông số giữa các chu trình; thao tác không hợp lệ sẽ bị chặn."));
 }
 function init(){
-  populateSolvents("hexane");bind();els.waterMetric.textContent="95 mL";els.oilMetric.textContent="5,00 mL";updatePhaseInfo();renderFunnel();renderSteps();updateButtons();
-  if(!solvents.some(s=>s.id==="hexane")){} // Keep configuration extensible.
+  populateSolvents("hexane");bind();
+  els.waterMetric.textContent="—";els.oilMetric.textContent="—";
+  els.stream.setAttribute("opacity","0");els.topStream.setAttribute("opacity","0");
+  renderFunnel();renderSteps();updateButtons();
 }
+init();
+
 init();
