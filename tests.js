@@ -36,17 +36,25 @@ test("Đóng khóa tạm dừng và mở lại tiếp tục từ thể tích cò
   s.valveOpen=false;s.stage="lower-partial";
   for(let i=0;i<6;i++){advanceFlowStep(s,.05);assertBalanced(s);}
   near(s.waterVolume,afterFirstRun);
-  s.valveOpen=true;
-  runFrames(s,()=>s.valveOpen||s.parcels.length>0);
-  near(s.waterVolume,0,1e-7);near(s.waterCollected,s.waterAddedVolume,1e-5);
+  s.valveOpen=true;s.stage="lower-partial";
+  runFrames(s,()=>s.stage==="lower-partial"||s.parcels.length>0);
+  near(s.waterVolume,0,1e-7);
+  if(!s.valveOpen||s.stage!=="lower-drained")throw new Error("valve should remain open at the phase boundary until explicitly closed");
+  s.valveOpen=false;s.stage="lower-pending";
+  runFrames(s,()=>s.parcels.length>0);
+  near(s.waterCollected,s.waterAddedVolume,1e-5);
   assertBalanced(s);
 });
 test("Thu pha dưới và rót pha trên vào hai cốc riêng",()=>{
   const s=initialState({mixVol:100,oilPct:5});
   s.organicPhaseVolume=25;s.organicAddedVolume=25;s.cycleInitialTotal=120;
   s.stage="lower-partial";s.valveOpen=true;s.selectedPhase="water";s.activeFlowPhase="water";
-  runFrames(s,()=>s.valveOpen||s.parcels.length>0);
-  near(s.waterVolume,0,1e-7);near(s.waterCollected,95,1e-5);
+  runFrames(s,()=>s.stage==="lower-partial"||s.parcels.length>0);
+  near(s.waterVolume,0,1e-7);
+  if(!s.valveOpen||s.stage!=="lower-drained")throw new Error("lower phase must stop at the interface with valve awaiting explicit close");
+  s.valveOpen=false;s.stage="lower-pending";
+  runFrames(s,()=>s.parcels.length>0);
+  near(s.waterCollected,95,1e-5);
   s.stage="collecting-upper";s.valveOpen=false;s.upperPouring=true;s.selectedPhase="organic";s.activeFlowPhase="organic";
   runFrames(s,()=>s.upperPouring||s.parcels.length>0);
   near(s.organicPhaseVolume,0,1e-7);near(s.organicCollected,25,1e-5);
