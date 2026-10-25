@@ -1,6 +1,6 @@
 import { DEFAULT_SOLVENTS, loadSolvents, saveSolvents } from "./solvents.js";
 import { WATER_DENSITY, validatePositive, phaseOrder, extractionStep, percent, clamp } from "./chemistry.js";
-import { initialState, transferAmount, volumeBalance, STREAM_TRANSIT_SECONDS, FLOW_RATE_ML_PER_SECOND } from "./separator.js";
+import { initialState, advanceFlowStep, volumeBalance } from "./separator.js";
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -55,9 +55,7 @@ function updateMetrics(){
 function phaseOrderForState(){return phaseOrder(WATER_DENSITY,currentSolvent().density);}
 function phaseVolume(phase){return phase==="water"?state.waterVolume:state.organicPhaseVolume;}
 function setPhaseVolume(phase,value){if(phase==="water")state.waterVolume=Math.max(0,value);else state.organicPhaseVolume=Math.max(0,value);}
-function addToStream(phase,amount){if(phase==="water")state.waterInStream+=amount;else state.organicInStream+=amount;}
-function removeFromStream(phase,amount){if(phase==="water")state.waterInStream=Math.max(0,state.waterInStream-amount);else state.organicInStream=Math.max(0,state.organicInStream-amount);}
-function addCollected(phase,amount){if(phase==="water")state.waterCollected+=amount;else state.organicCollected+=amount;}
+
 function collectedVolume(phase){return phase==="water"?state.waterCollected:state.organicCollected;}
 function parcelExistsFor(phase){return state.parcels.some(p=>p.phase===phase);}
 function assertVolumeBalance(){
@@ -234,33 +232,7 @@ function startUpperPour(){
   setMessage("Đã mô phỏng lấy phễu khỏi kẹp và nghiêng để rót "+(phase==="water"?"pha nước":"pha hữu cơ")+" qua miệng phễu vào cốc riêng. Thể tích giảm dần theo thời gian.");
   updateButtons();renderReceivers();ensureFlowLoop();
 }
-function transferToStream(dt){
-  const phase=state.activeFlowPhase,remaining=phaseVolume(phase);
-  if(remaining<=1e-6){
-    setPhaseVolume(phase,0);
-    if(state.valveOpen){state.valveOpen=false;state.stage="lower-pending";setLowerOutletVisible(false);setStatus("Đã xả hết pha dưới",true);setMessage("Pha dưới đã hết trong phễu. Đang chờ dòng cuối cùng vào cốc.");updateButtons();}
-    else if(state.upperPouring){state.upperPouring=false;state.stage="upper-pending";els.topStream.setAttribute("opacity","0");}
-    return;
-  }
-  const amount=transferAmount(remaining,FLOW_RATE_ML_PER_SECOND,dt);
-  if(amount<=0)return;
-  setPhaseVolume(phase,remaining-amount<1e-6?0:remaining-amount);addToStream(phase,amount);
-  state.parcels.push({phase,amount,remainingSeconds:STREAM_TRANSIT_SECONDS});
-  if(phaseVolume(phase)<=1e-6){
-    setPhaseVolume(phase,0);
-    if(state.valveOpen){state.valveOpen=false;state.stage="lower-pending";setLowerOutletVisible(false);setStatus("Đã xả hết pha dưới",true);setMessage("Pha dưới đã hết trong phễu. Đang chờ dòng cuối cùng vào cốc.");updateButtons();}
-    if(state.upperPouring){state.upperPouring=false;state.stage="upper-pending";els.topStream.setAttribute("opacity","0");}
-  }
-}
-function deliverParcels(dt){
-  const keep=[];
-  for(const parcel of state.parcels){
-    parcel.remainingSeconds-=dt;
-    if(parcel.remainingSeconds<=0){removeFromStream(parcel.phase,parcel.amount);addCollected(parcel.phase,parcel.amount);}
-    else keep.push(parcel);
-  }
-  state.parcels=keep;
-}
+
 function finishLowerIfReady(){
   const lower=phaseOrderForState().bottom;
   if(state.stage!=="lower-pending"||phaseVolume(lower)>1e-6||parcelExistsFor(lower))return;
@@ -289,15 +261,25 @@ function completeUpperCollection(){
   els.results.classList.remove("hidden");sync();renderResults();
 }
 function flowFrame(now){
-  animationFrameId=null;if(!state)return;
-  const dt=previousFrameTime==null?0:clamp((now-previousFrameTime)/1000,0,.05);previousFrameTime=now;
-  deliverParcels(dt);
-  if(dt>0&&(state.valveOpen||state.upperPouring))transferToStream(dt);
-  finishLowerIfReady();finishUpperIfReady();assertVolumeBalance();
+  animationFrameId=null;
+  if(!state)return;
+  const dt=previousFrameTime==null?0:clamp((now-previousFrameTime)/1000,0,.05);
+  previousFrameTime=now;
+  const events=advanceFlowStep(state,dt);
+  if(events.lowerDrained){
+    setLowerOutletVisible(false);
+    setStatus("Đã xả hết pha dưới",true);
+    setMessage("Pha dưới đã hết trong phễu. Đang chờ dòng cuối cùng vào cốc.");
+  }
+  if(events.upperDrained)els.topStream.setAttribute("opacity","0");
+  finishLowerIfReady();
+  finishUpperIfReady();
+  assertVolumeBalance();
   renderFunnel();updateMetrics();renderSteps();updateButtons();
   if(state&&(state.valveOpen||state.upperPouring||state.parcels.length))animationFrameId=requestAnimationFrame(flowFrame);
   else previousFrameTime=null;
 }
+
 function ensureFlowLoop(){if(animationFrameId==null){previousFrameTime=null;animationFrameId=requestAnimationFrame(flowFrame);}}
 function nextExtraction(){
   if(!state||state.stage!=="complete"||state.oilRemaining<.005)return;
