@@ -51,5 +51,76 @@ export function volumeBalance({ remaining, collected, inStream, added }) {
   return remaining + collected + inStream - added;
 }
 
+/**
+ * Move liquid using elapsed wall-clock time. The amount being carried by the
+ * stream is a separate compartment until each parcel reaches its receiver.
+ */
+export function advanceFlowStep(state, elapsedSeconds) {
+  const elapsed = Number(elapsedSeconds);
+  if (!Number.isFinite(elapsed) || elapsed < 0) throw new RangeError("elapsedSeconds must be finite and non-negative");
+  const dt = Math.min(0.05, elapsed);
+  const events = { lowerDrained:false, upperDrained:false, delivered:0 };
+
+  const remainingParcels = [];
+  for (const parcel of state.parcels) {
+    parcel.remainingSeconds -= dt;
+    if (parcel.remainingSeconds <= 0) {
+      if (parcel.phase === "water") {
+        state.waterInStream = Math.max(0, state.waterInStream - parcel.amount);
+        state.waterCollected += parcel.amount;
+      } else {
+        state.organicInStream = Math.max(0, state.organicInStream - parcel.amount);
+        state.organicCollected += parcel.amount;
+      }
+      events.delivered += parcel.amount;
+    } else remainingParcels.push(parcel);
+  }
+  state.parcels = remainingParcels;
+
+  if (dt > 0 && (state.valveOpen || state.upperPouring)) {
+    const phase = state.activeFlowPhase;
+    const source = phase === "water" ? state.waterVolume : state.organicPhaseVolume;
+    if (source <= EPS) {
+      if (phase === "water") state.waterVolume = 0;
+      else state.organicPhaseVolume = 0;
+      if (state.valveOpen) {
+        state.valveOpen = false;
+        state.stage = "lower-pending";
+        events.lowerDrained = true;
+      } else if (state.upperPouring) {
+        state.upperPouring = false;
+        state.stage = "upper-pending";
+        events.upperDrained = true;
+      }
+    } else {
+      const amount = transferAmount(source, FLOW_RATE_ML_PER_SECOND, dt);
+      if (amount > 0) {
+        if (phase === "water") {
+          state.waterVolume = source - amount < EPS ? 0 : source - amount;
+          state.waterInStream += amount;
+        } else {
+          state.organicPhaseVolume = source - amount < EPS ? 0 : source - amount;
+          state.organicInStream += amount;
+        }
+        state.parcels.push({ phase, amount, remainingSeconds:STREAM_TRANSIT_SECONDS });
+      }
+      if ((phase === "water" ? state.waterVolume : state.organicPhaseVolume) <= EPS) {
+        if (phase === "water") state.waterVolume = 0;
+        else state.organicPhaseVolume = 0;
+        if (state.valveOpen) {
+          state.valveOpen = false;
+          state.stage = "lower-pending";
+          events.lowerDrained = true;
+        } else if (state.upperPouring) {
+          state.upperPouring = false;
+          state.stage = "upper-pending";
+          events.upperDrained = true;
+        }
+      }
+    }
+  }
+  return events;
+}
+
 export function canSettle(state) { return state.stage === "shaken"; }
 export function canDrain(state) { return state.stage === "settled" || state.stage === "lower-partial"; }
