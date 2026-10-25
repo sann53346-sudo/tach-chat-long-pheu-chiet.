@@ -77,15 +77,16 @@ export function advanceFlowStep(state, elapsedSeconds) {
   }
   state.parcels = remainingParcels;
 
-  if (dt > 0 && (state.valveOpen || state.upperPouring)) {
+  if (dt > 0 && ((state.valveOpen && state.stage === "lower-partial") || state.upperPouring)) {
     const phase = state.activeFlowPhase;
     const source = phase === "water" ? state.waterVolume : state.organicPhaseVolume;
     if (source <= EPS) {
       if (phase === "water") state.waterVolume = 0;
       else state.organicPhaseVolume = 0;
       if (state.valveOpen) {
-        state.valveOpen = false;
-        state.stage = "lower-pending";
+        // Do not close the valve automatically. Stop flow at the phase boundary
+        // and wait for an explicit close-button action.
+        state.stage = "lower-drained";
         events.lowerDrained = true;
       } else if (state.upperPouring) {
         state.upperPouring = false;
@@ -108,8 +109,9 @@ export function advanceFlowStep(state, elapsedSeconds) {
         if (phase === "water") state.waterVolume = 0;
         else state.organicPhaseVolume = 0;
         if (state.valveOpen) {
-          state.valveOpen = false;
-          state.stage = "lower-pending";
+          // The valve remains logically open, but no more liquid is emitted
+          // until the user closes it. The rAF loop stops for this phase.
+          state.stage = "lower-drained";
           events.lowerDrained = true;
         } else if (state.upperPouring) {
           state.upperPouring = false;
