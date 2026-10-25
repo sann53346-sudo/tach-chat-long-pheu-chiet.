@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1728">
+  <title>Phòng thí nghiệm ảo · Tách tinh dầu bằng phễu chiết</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark">⚗</div>
+    <div><div class="eyebrow">PHÒNG THÍ NGHIỆM ẢO · HÓA HỌC</div><h1>Tách tinh dầu bằng phễu chiết</h1></div>
+    <span class="top-tag">MÔ PHỎNG GIÁO DỤC</span>
+  </header>
+  <main class="app-shell">
+    <section class="intro panel">
+      <div><span class="step-pill">THÍ NGHIỆM 01</span><h2>Tách tinh dầu khỏi hỗn hợp nước – tinh dầu</h2>
+      <p>Khám phá sự phân lớp, ảnh hưởng của khối lượng riêng và hiệu quả chiết bằng dung môi.</p></div>
+      <div class="mode-switch"><label for="mode">Chế độ</label><select id="mode"><option value="guided">Thực hành có hướng dẫn</option><option value="free">Tự do khám phá</option></select></div>
+    </section>
+
+    <div class="workspace">
+      <section class="lab panel">
+        <div class="section-heading"><div><span class="eyebrow">BÀN THÍ NGHIỆM</span><h2>Phễu chiết tương tác</h2></div><span id="status" class="status">Chưa bắt đầu</span></div>
+        <div class="scene-wrap">
+          <svg id="apparatus" viewBox="0 0 720 520" role="img" aria-label="Phễu chiết trên giá đỡ cùng các bình hứng">
+            <defs>
+              <linearGradient id="glass" x1="0" x2="1"><stop offset="0" stop-color="#c9f1ff" stop-opacity=".18"/><stop offset=".45" stop-color="#fff" stop-opacity=".42"/><stop offset="1" stop-color="#9bd7ed" stop-opacity=".12"/></linearGradient>
+              <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#42b9e9" stop-opacity=".75"/><stop offset="1" stop-color="#1683c2" stop-opacity=".9"/></linearGradient>
+              <linearGradient id="oilGrad" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f7c969" stop-opacity=".9"/><stop offset="1" stop-color="#e99a2c" stop-opacity=".9"/></linearGradient>
+              <clipPath id="funnelClip"><path d="M264 90 L456 90 L442 168 Q435 205 378 263 L378 306 L342 306 L342 263 Q285 205 278 168 Z"/></clipPath>
+              <filter id="softGlow"><feGaussianBlur stdDeviation="4"/></filter>
+            </defs>
+            <ellipse cx="360" cy="472" rx="280" ry="20" fill="#06101e" opacity=".5"/>
+            <g id="stand" stroke="#9ab0c8" stroke-width="8" stroke-linecap="round" fill="none"><path d="M95 455 H610"/><path d="M135 455 V78"/><path d="M130 455 H165"/><path d="M135 98 H265"/><path d="M135 130 H285"/></g>
+            <g id="clamp" stroke="#a6bbd0" stroke-width="7" fill="none" stroke-linecap="round"><path d="M245 108 H280"/><path d="M440 108 H474"/><path d="M260 108 V137"/><path d="M460 108 V137"/></g>
+            <g id="funnelGroup">
+              <path d="M264 90 L456 90 L442 168 Q435 205 378 263 L378 306 L342 306 L342 263 Q285 205 278 168 Z" fill="url(#glass)" stroke="#c7e6f6" stroke-width="4"/>
+              <g clip-path="url(#funnelClip)">
+                <rect id="upperLiquid" x="260" y="90" width="200" height="100" fill="url(#oilGrad)"/>
+                <rect id="lowerLiquid" x="260" y="190" width="200" height="100" fill="url(#waterGrad)"/>
+                <path id="interface" d="M270 190 H450" stroke="#f5fbff" stroke-width="3" stroke-dasharray="7 4"/>
+                <g id="droplets"></g>
+              </g>
+              <path d="M264 90 L456 90 L442 168 Q435 205 378 263 L378 306 L342 306 L342 263 Q285 205 278 168 Z" fill="none" stroke="#d9f1ff" stroke-width="4"/>
+              <ellipse cx="360" cy="90" rx="96" ry="9" fill="#dff6ff" fill-opacity=".3" stroke="#d9f1ff" stroke-width="3"/>
+              <path d="M338 306 H382 V321 H338 Z" fill="#d8edf8" stroke="#9bbbd0" stroke-width="2"/>
+              <path d="M342 321 H378 V335 H342 Z" fill="#a9c5d8" stroke="#d9f1ff" stroke-width="2"/>
+              <g id="stopcock" class="stopcock" role="button" tabindex="0" aria-label="Mở hoặc đóng khóa phễu"><path d="M330 328 H390" stroke="#e9f5fc" stroke-width="8" stroke-linecap="round"/><circle cx="360" cy="328" r="12" fill="#dcecf5" stroke="#718ba2" stroke-width="3"/><path id="stopcockHandle" d="M360 316 V340" stroke="#35516b" stroke-width="5" stroke-linecap="round"/></g>
+              <path d="M351 335 V354 H369 V335" fill="url(#glass)" stroke="#c7e6f6" stroke-width="3"/>
+              <path id="stream" d="M360 354 V414" stroke="#42b9e9" stroke-width="7" stroke-linecap="round" opacity="0"/>
+            </g>
+            <g id="beakerWater">
+              <path d="M200 385 L200 450 Q200 461 212 461 H275 Q287 461 287 450 L287 385" fill="url(#glass)" stroke="#b9d7e8" stroke-width="3"/>
+              <path id="waterCollected" d="M204 430 H283 V450 Q283 457 274 457 H213 Q204 457 204 450 Z" fill="#239dd4" opacity=".8"/>
+              <text x="243" y="483" text-anchor="middle" fill="#d5e5f3" font-size="14">Bình thu A</text>
+              <text id="waterVolSvg" x="243" y="502" text-anchor="middle" fill="#8ecdf0" font-size="13">0 mL</text>
+            </g>
+            <g id="beakerOrganic">
+              <path d="M430 385 L430 450 Q430 461 442 461 H505 Q517 461 517 450 L517 385" fill="url(#glass)" stroke="#b9d7e8" stroke-width="3"/>
+              <path id="organicCollected" d="M434 430 H513 V450 Q513 457 504 457 H443 Q434 457 434 450 Z" fill="#e9a43d" opacity=".8"/>
+              <text x="473" y="483" text-anchor="middle" fill="#d5e5f3" font-size="14">Bình thu B</text>
+              <text id="organicVolSvg" x="473" y="502" text-anchor="middle" fill="#f4c779" font-size="13">0 mL</text>
+            </g>
+            <text x="360" y="58" text-anchor="middle" fill="#e7f3fc" font-size="16" font-weight="600">PHỄU CHIẾT</text>
+            <text id="upperLabel" x="360" y="133" text-anchor="middle" fill="#573b12" font-size="13" font-weight="700">Pha hữu cơ</text>
+            <text id="lowerLabel" x="360" y="225" text-anchor="middle" fill="#073b58" font-size="13" font-weight="700">Pha nước</text>
+            <g id="shakeBadge" opacity="0"><circle cx="500" cy="120" r="27" fill="#183b5c" stroke="#75c9ef"/><text x="500" y="125" text-anchor="middle" fill="#c4edff" font-size="11">LẮC</text></g>
+          </svg>
+        </div>
+        <div class="legend"><span><i class="dot water"></i>Pha nước</span><span><i class="dot organic"></i>Pha hữu cơ / dung môi</span><span><i class="dot droplets"></i>Giọt phân tán khi lắc</span></div>
+        <p class="visual-note">Màu sắc chỉ dùng để phân biệt pha trong mô phỏng, không đại diện cho màu thật của mọi loại tinh dầu hoặc dung môi.</p>
+        <div class="control-row">
+          <button id="startBtn" class="btn primary">▶ Bắt đầu thí nghiệm</button>
+          <button id="shakeBtn" class="btn">↻ Lắc phễu</button>
+          <button id="settleBtn" class="btn">◉ Để yên & phân lớp</button>
+          <button id="openBtn" class="btn warn">Mở khóa</button>
+          <button id="closeBtn" class="btn">Đóng khóa</button>
+        </div>
+        <div class="control-row secondary">
+          <button id="nextPhaseBtn" class="btn">Thu pha tiếp theo</button>
+          <button id="nextExtractionBtn" class="btn">Chiết lần tiếp theo</button>
+          <button id="resultBtn" class="btn">Xem kết quả</button>
+          <button id="resetBtn" class="btn subtle">Đặt lại</button>
+        </div>
+        <div id="message" class="message" role="status">Chọn hỗn hợp và nhấn “Bắt đầu thí nghiệm”.</div>
+      </section>
+
+      <aside class="sidebar">
+        <section class="panel">
+          <div class="section-heading"><div><span class="eyebrow">THÔNG SỐ</span><h2>Thiết lập thí nghiệm</h2></div></div>
+          <label>Loại tinh dầu<select id="oilType"><option value="sả">Tinh dầu sả</option><option value="tràm">Tinh dầu tràm</option><option value="bưởi">Tinh dầu bưởi</option></select></label>
+          <div class="two-col">
+            <label>Thể tích hỗn hợp (mL)<input id="mixVol" type="number" min="10" max="500" value="100"></label>
+            <label>Tỷ lệ tinh dầu (%)<input id="oilPct" type="number" min="0.1" max="30" step="0.1" value="5"></label>
+          </div>
+          <label>Dung môi chiết<select id="solventSelect"></select></label>
+          <div class="two-col">
+            <label>Thể tích dung môi (mL)<input id="solventVol" type="number" min="1" max="200" value="25"></label>
+            <label>Hệ số phân bố K<input id="partitionK" type="number" min="0.01" max="1000" step="0.1" value="8"></label>
+          </div>
+          <div class="metrics">
+            <div><span>Thể tích nước</span><strong id="waterMetric">95 mL</strong></div>
+            <div><span>Tinh dầu ban đầu</span><strong id="oilMetric">5.00 mL</strong></div>
+            <div><span>Khối lượng riêng nước</span><strong>1,00 g/mL</strong></div>
+            <div><span>Khối lượng riêng dung môi</span><strong id="densityMetric">0,66 g/mL</strong></div>
+          </div>
+          <button id="addSolventBtn" class="btn full">＋ Quản lý / thêm dung môi</button>
+          <div id="addSolventForm" class="add-form hidden">
+            <h3>Thêm dung môi</h3>
+            <label>Tên<input id="newName" placeholder="Ví dụ: Dung môi thử nghiệm"></label>
+            <div class="two-col"><label>Khối lượng riêng (g/mL)<input id="newDensity" type="number" min="0.01" max="5" step="0.01" value="0.85"></label><label>Hệ số K (nếu biết)<input id="newK" type="number" min="0.01" max="1000" step="0.1" placeholder="Để trống nếu chưa biết"></label></div>
+            <label>Độ hòa trộn với nước<select id="newMiscibility"><option value="immiscible">Ít hòa trộn / tạo hai pha (giả định)</option><option value="partial">Hòa tan một phần</option><option value="miscible">Trộn lẫn hoàn toàn</option></select></label>
+            <div class="two-col"><label>Màu mô phỏng<input id="newColor" type="color" value="#e7ad45"></label><label>Thể tích mặc định (mL)<input id="newVol" type="number" min="1" max="200" value="25"></label></div>
+            <label>Ghi chú / nguồn dữ liệu<input id="newNote" placeholder="Ví dụ: thông số giả định"></label>
+            <div class="control-row"><button id="saveSolventBtn" class="btn primary">Lưu dung môi</button><button id="cancelSolventBtn" class="btn">Hủy</button></div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="section-heading"><div><span class="eyebrow">TRẠNG THÁI</span><h2>Các pha trong phễu</h2></div></div>
+          <div class="phase-card"><span class="phase-swatch organic"></span><div><strong id="topPhaseName">Pha hữu cơ</strong><small id="topPhaseDetail">ρ = 0,66 g/mL · lớp trên</small></div></div>
+          <div class="phase-card"><span class="phase-swatch water"></span><div><strong id="bottomPhaseName">Pha nước</strong><small id="bottomPhaseDetail">ρ = 1,00 g/mL · lớp dưới</small></div></div>
+          <p id="densityExplanation" class="small-note">Pha có khối lượng riêng nhỏ hơn nằm phía trên trong mô hình hai pha không trộn lẫn.</p>
+        </section>
+        <section class="panel">
+          <div class="section-heading"><div><span class="eyebrow">HƯỚNG DẪN</span><h2>Quy trình thao tác</h2></div></div>
+          <ol id="steps" class="steps"><li class="active">Chuẩn bị hỗn hợp và chọn dung môi.</li><li>Lắc phễu để tăng tiếp xúc giữa các pha.</li><li>Để yên cho hai pha phân lớp.</li><li>Mở khóa, thu pha dưới rồi đóng khóa đúng lúc.</li><li>Phân tích hiệu suất và so sánh các lần chiết.</li></ol>
+        </section>
+      </aside>
+    </div>
+
+    <section id="results" class="panel results-panel hidden">
+      <div class="section-heading"><div><span class="eyebrow">BÁO CÁO</span><h2>Kết quả chiết tinh dầu</h2></div><button id="hideResultBtn" class="btn">Ẩn kết quả</button></div>
+      <div class="result-grid">
+        <div class="result-stat"><span>Hiệu suất thu hồi tinh dầu</span><strong id="yieldResult">0%</strong><small>So với lượng tinh dầu ban đầu</small></div>
+        <div class="result-stat"><span>Tinh dầu đã chuyển sang pha hữu cơ</span><strong id="extractedResult">0.00 mL</strong></div>
+        <div class="result-stat"><span>Tinh dầu còn trong pha nước</span><strong id="remainingResult">0.00 mL</strong></div>
+        <div class="result-stat"><span>Số lần chiết</span><strong id="countResult">0</strong></div>
+      </div>
+      <h3>Lịch sử các lần chiết</h3>
+      <div class="table-wrap"><table><thead><tr><th>Lần</th><th>Dung môi</th><th>V dung môi</th><th>Tinh dầu còn lại</th><th>Hiệu suất tích lũy</th></tr></thead><tbody id="historyBody"><tr><td colspan="5">Chưa có lần chiết hoàn tất.</td></tr></tbody></table></div>
+      <div class="chart-wrap"><h3>Hiệu suất thu hồi tích lũy</h3><div id="yieldChart" class="chart" aria-label="Biểu đồ hiệu suất chiết"></div></div>
+      <p class="small-note">Mô hình phân bố lý tưởng: m còn lại = m trước × V nước / (V nước + K × V dung môi). K là thông số mô phỏng, không phải giá trị thực nghiệm mặc định cho mọi tinh dầu.</p>
+    </section>
+    <footer>Ứng dụng phục vụ học tập. Không dùng thông số mô phỏng làm hướng dẫn thao tác hóa chất ngoài phòng thí nghiệm.</footer>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
