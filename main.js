@@ -128,7 +128,7 @@ function renderSteps(){
   const labels=["Chuẩn bị hỗn hợp và chọn dung môi.","Lắc phễu để tăng tiếp xúc giữa các pha.","Để yên cho hai pha phân lớp.","Mở khóa, thu hết pha dưới.","Nghiêng phễu và rót pha trên qua miệng."];
   els.steps.innerHTML="";
   const stage=state?.stage||"idle";
-  const active=stage==="idle"?0:["ready","shaking"].includes(stage)?1:stage==="shaken"?2:["settled","lower-partial","lower-pending"].includes(stage)?3:["lower-collected","collecting-upper","upper-pending"].includes(stage)?4:5;
+  const active=stage==="idle"?0:["ready","shaking"].includes(stage)?1:stage==="shaken"?2:["settled","lower-partial","lower-drained","lower-pending"].includes(stage)?3:["lower-collected","collecting-upper","upper-pending"].includes(stage)?4:5;
   labels.forEach((label,i)=>{const li=document.createElement("li");li.textContent=label;if(i<active)li.className="done";else if(i===active)li.className="active";els.steps.append(li);});
 }
 
@@ -215,9 +215,9 @@ function openValve(){
 function closeValve(){
   if(!state||!state.valveOpen)return;
   state.valveOpen=false;setLowerOutletVisible(false);
-  if(phaseVolume(state.activeFlowPhase)<=1e-6)state.stage="lower-pending";else state.stage="lower-partial";
+  if(state.stage==="lower-drained"||phaseVolume(state.activeFlowPhase)<=1e-6)state.stage="lower-pending";else state.stage="lower-partial";
   setStatus("Đã đóng khóa",true);
-  setMessage(phaseVolume(state.activeFlowPhase)<=1e-6?"Pha dưới đã rời phễu; những giọt cuối đang đi vào cốc.":"Dòng chảy đã dừng. Thể tích còn lại được bảo toàn; mở khóa để tiếp tục.");
+  setMessage(state.stage==="lower-pending"?"Đã đóng khóa. Những giọt cuối đang đi vào cốc; pha trên vẫn nằm trong phễu.":"Dòng chảy đã dừng. Thể tích còn lại được bảo toàn; mở khóa để tiếp tục.");
   updateButtons();ensureFlowLoop();sync();
 }
 function startUpperPour(){
@@ -267,16 +267,17 @@ function flowFrame(now){
   previousFrameTime=now;
   const events=advanceFlowStep(state,dt);
   if(events.lowerDrained){
-    setLowerOutletVisible(false);
-    setStatus("Đã xả hết pha dưới",true);
-    setMessage("Pha dưới đã hết trong phễu. Đang chờ dòng cuối cùng vào cốc.");
+    // Stop the visible stream but keep the valve handle open until the user closes it.
+    els.stream.setAttribute("opacity","0");
+    setStatus("Pha dưới đã hết · hãy đóng khóa",true);
+    setMessage("Pha dưới đã hết trong phễu. Khóa vẫn đang mở để bạn đóng; giọt cuối vẫn đang đi vào cốc.");
   }
   if(events.upperDrained)els.topStream.setAttribute("opacity","0");
   finishLowerIfReady();
   finishUpperIfReady();
   assertVolumeBalance();
   renderFunnel();updateMetrics();renderSteps();updateButtons();
-  if(state&&(state.valveOpen||state.upperPouring||state.parcels.length))animationFrameId=requestAnimationFrame(flowFrame);
+  if(state&&((state.valveOpen&&state.stage==="lower-partial")||state.upperPouring||state.parcels.length))animationFrameId=requestAnimationFrame(flowFrame);
   else previousFrameTime=null;
 }
 
